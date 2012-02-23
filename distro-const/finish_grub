@@ -1,0 +1,39 @@
+#!/bin/bash
+
+
+# Define a few commands.
+ECHO=/usr/bin/echo
+CAT=/usr/bin/cat
+LOFIADM=/usr/sbin/lofiadm
+MKISOFS=/usr/bin/mkisofs
+TIME=/usr/bin/time
+
+PKG_IMG_PATH=$2
+if [ ! -d $PKG_IMG_PATH ] ; then
+	print -u2 -f "%s: Image package area %s is not valid\n" \
+	    "$0" "$PKG_IMG_PATH"
+	exit 1
+fi
+
+SPLASH=splash_sve.xpm.gz
+##MENU=menu.lst2
+MENU=$PKG_IMG_PATH/rpoot/boot/grub/menu.lst
+SINGLE_USER=menu.lst.tmp
+
+# splash screen
+/usr/gnu/bin/cp $SPLASH $PKG_IMG_PATH/rpool/boot/grub/
+/usr/bin/sed -i -e s/'splash.xpm.gz'/"$SPLASH"/ $MENU
+# verbose boot
+/usr/bin/sed -i -e s/BOOTFS/'BOOTFS -v'/ $MENU
+# single-user entry
+SU=$(awk '/title/,/archive/' $MENU | sed -e 's/1.1.151a/0.1.151a (single-user)/' -e 's/BOOTFS/BOOTFS -m single-user/')
+IFS=`echo -en "\n\b"`
+for line in $SU
+do
+	sed -i "/END/ i $line" $MENU
+done
+
+/usr/gnu/bin/cp text-mode-menu $PKG_IMG_PATH/usr/sbin/
+/usr/gnu/bin/cp osol_install/ict.py $PKG_IMG_PATH/usr/lib/python2.6/vendor-packages/osol_install/
+/usr/gnu/bin/cp osol_install/text_install/*.py $PKG_IMG_PATH/usr/lib/python2.6/vendor-packages/osol_install/text_install/
+

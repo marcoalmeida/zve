@@ -1,0 +1,20 @@
+#!/bin/bash
+
+
+# Define a few commands.
+ECHO=/usr/bin/echo
+CAT=/usr/bin/cat
+LOFIADM=/usr/sbin/lofiadm
+MKISOFS=/usr/bin/mkisofs
+TIME=/usr/bin/time
+
+PKG_IMG_PATH=$2
+if [ ! -d $PKG_IMG_PATH ] ; then
+	print -u2 -f "%s: Image package area %s is not valid\n" \
+	    "$0" "$PKG_IMG_PATH"
+	exit 1
+fi
+
+
+$CAT motd > $PKG_IMG_PATH/etc/motd
+$CAT release > $PKG_IMG_PATH/etc/release

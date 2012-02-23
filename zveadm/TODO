@@ -1,0 +1,12 @@
+check output: has everything executed as expected when processing FOO?
+
+improve output: don't use os.system() because it always writes to
+stdout; coherent naming (zone -> VM), -H flag for easier parsing with
+other tools
+
+shell_execute() should return separate strings for stdout and stderr
+in order to make error detection and handling easier; change with
+care: this breaks compatibility
+
+all subcommands must end with silent output if and only if no error
+occurred (unless verbose output is requested)

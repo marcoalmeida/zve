@@ -1,0 +1,449 @@
+#!/usr/bin/python3
+
+import sys
+import os
+from subprocess import Popen, PIPE, STDOUT
+import shlex
+import datetime
+import re
+import time
+import argparse
+
+
+##
+## settings
+##
+BASE_ZONE_PATH = "/zones"
+BACKUP_SNAPSHOT_NAME = "ZVE_BACKUP"
+
+
+##
+## options parser
+##
+
+# create the top-level parser
+parser = argparse.ArgumentParser(prog=sys.argv[0], description="Administer the Zeta Virtualization Environment")
+subparsers = parser.add_subparsers(title="subcommands", description="valid subcommands", help="sub-command help")
+
+# parser for the "create" command
+parser_create = subparsers.add_parser("create", help="Create a new VM")
+parser_create.add_argument("-n", "--name", dest="name", metavar="NAME",
+                           help="VM name", required=True)
+parser_create.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
+                           help="Network interface name", required=True)
+parser_create.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
+                           help="Network interface IP address", required=True)
+parser_create.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
+                           default=False, help="Should be booted automatically at system boot")
+parser_create.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
+                           help="VM description", default=None)
+parser_create.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
+                           help="Boot arguments", default="")
+parser_create.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
+                           help="Capped memory", default=None)
+
+# parser for the "update" command
+parser_update = subparsers.add_parser("update", help="Update an existing VM")
+parser_update.add_argument("-n", "--name", dest="name", metavar="NAME",
+                           help="VM name", required=True)
+parser_update.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
+                           default=None, help="Network interface name")
+parser_update.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
+                           default=None, help="Network interface IP address")
+parser_update.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
+                           default=None, help="Should not be booted automatically at system boot")
+parser_update.add_argument("--no-autoboot", dest="noautoboot", action="store_true",
+                           default=None, help="Should be booted automatically at system boot")
+parser_update.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
+                           default=None, help="VM description")
+parser_update.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
+                           default=None, help="Boot arguments")
+parser_update.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
+                           default=None, help="Capped memory")
+parser_update.add_argument("-r", "--reboot", dest="reboot", action="store_true",
+                           default=False, help="Automatically reboot so that the changes take effect")
+parser_update.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+
+# parser for the "destroy" command
+parser_destroy = subparsers.add_parser("destroy", help="Destroy a VM")
+parser_destroy.add_argument("-n", "--name", dest="name", metavar="NAME",
+                           help="VM name", required=True)
+parser_destroy.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+
+# parser for the "list" command
+parser_list = subparsers.add_parser("list", help="List the existing VMs")
+parser_list.add_argument("-r", "--running", dest="running", action="store_true", 
+                         default=False, help="Show only running VMs")
+parser_list.add_argument("-H", "--no-header", dest="no_header", action="store_true", 
+                         default=False, help="Do not print headers")
+parser_list.add_argument("-v", "--verbose", action="store_true", default=False, 
+                         help="Verbose output")
+
+# parser for the "show" command
+parser_show = subparsers.add_parser("show", help="Display information about a VM confguration")
+parser_show.add_argument("-n", "--name", dest="name", metavar="NAME",
+                         help="VM name", required=True)
+
+# parser for the "login" command
+parser_login = subparsers.add_parser("login", help="Connect to a VM console")
+parser_login.add_argument("-n", "--name", dest="name", metavar="NAME",
+                          help="VM name", required=True)
+
+# parser for the "boot" command
+parser_boot = subparsers.add_parser("boot", help="Boot a VM")
+parser_boot.add_argument("-n", "--name", dest="name", metavar="NAME",
+                             help="VM name", required=True)
+
+# parser for the "reboot" command
+parser_reboot = subparsers.add_parser("reboot", help="Cleanly reboot a VM")
+parser_reboot.add_argument("-n", "--name", dest="name", metavar="NAME",
+                             help="VM name", required=True)
+parser_reboot.add_argument("-v", "--verbose", action="store_true", default=False, 
+                           help="Verbose output")
+
+# parser for the "shutdown" command
+parser_shutdown = subparsers.add_parser("shutdown", help="Cleanly shutdown a VM")
+parser_shutdown.add_argument("-n", "--name", dest="name", metavar="NAME",
+                             help="VM name", required=True)
+parser_shutdown.add_argument("-f", "--force", action="store_true", default=False, 
+                             help="Stop the VM bypassing the shutdown scripts")
+parser_shutdown.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+
+# parser for the "backup" command
+parser_backup = subparsers.add_parser("backup", help="Backup a VM")
+parser_backup.add_argument("-n", "--name", dest="name", metavar="NAME",
+                           help="VM name", required=True)
+parser_backup.add_argument("-d", "--destination", dest="dest", metavar="DESTINATION",
+                           help="Full path to the backup directory", required=True)
+parser_backup.add_argument("-f", "--force", action="store_true", default=False, 
+                             help="Force backup (e.g., bypassing the shutdown scripts)")
+parser_backup.add_argument("-v", "--verbose", action="store_true", default=False, 
+                           help="Verbose output")
+
+# parser for the "restore" command
+parser_restore = subparsers.add_parser("restore", help="Restore a VM")
+parser_restore.add_argument("-n", "--name", dest="name", metavar="NAME",
+                           help="VM name", required=True)
+parser_restore.add_argument("-B", "--backup", dest="backup", metavar="BACKUP",
+                           help="Full path to the backup file", required=True)
+parser_restore.add_argument("-b", "--boot", action="store_true", default=False, 
+                           help="Boot the zone after restoring the backup")
+parser_restore.add_argument("-v", "--verbose", action="store_true", default=False, 
+                           help="Verbose output")
+
+# parser for the "clone" command
+parser_clone = subparsers.add_parser("clone", help="Clone a VM")
+
+
+##
+## assorted, useful stuff
+##
+
+# equivalent to os.system(cmd), but returns the output
+def shell_execute(cmd):
+    p = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
+    return p.communicate()[0].decode("utf-8").strip()
+
+# temporary thing to have a reasonable output...
+def zone2vm(s0):
+    s1 = re.sub("zlogin: ", "", s0, 0, re.M|re.I)
+    s2 = re.sub("zoneadm: ", "", s1, 0, re.M|re.I)
+    s3 = re.sub("zone", "VM", s2, 0, re.M|re.I)
+    final = s3
+    return final
+
+# output if verbose
+def verbose(text, v=False):
+    if v:
+        print(text)
+
+
+##
+## helper functions (create, update, etc.)
+##
+def gen_zone_description(desc, save=False):
+    desc_parts = ["add attr", "set name=comment", "set type=string",
+                  "set value=\"%s\"" % desc, "end"]
+    if save:
+        desc_parts.append("commit")
+    return desc_parts
+
+def gen_zone_cap_mem(limit, save=False):
+    cap_mem = ["add capped-memory", "set physical=%s" % limit, "end"]
+    if save:
+        cap_mem.append("commit")
+    return cap_mem
+
+def gen_zone_net(addr, phys, save=False):
+    cap_mem = ["add net", "set address=%s" % addr, "set physical=%s" % phys, "end"]
+    if save:
+        cap_mem.append("commit")
+    return cap_mem
+
+
+##
+## subcommands
+##
+
+def create(options):
+    vm_options = ""
+    begin_cfg = "create"
+    end_cfg = """
+    verify
+    commit
+    exit
+    """
+    base_cfg = """
+    set zonepath=%s
+    set autoboot=%s
+    set bootargs=\"%s\"
+
+    add net
+    set address=%s
+    set physical=%s
+    end
+    """
+    if options.mem is not None:
+        vm_options += """
+        add capped-memory
+        set physical=%s
+        end
+        """ % options.mem
+    if options.desc is not None:
+        vm_options += """
+        add attr
+        set name=comment
+        set type=string
+        set value=\"%s\"
+        end
+        """ % options.desc
+    vm_cfg = begin_cfg + base_cfg % (os.path.join(BASE_ZONE_PATH, options.name),
+                                     str(options.autoboot).lower(), options.bootargs, 
+                                     options.netaddr, options.netif) + vm_options + end_cfg
+    # create the cfg file
+    fname = options.name + ".cfg"
+    cfg = open(fname, "w")
+    cfg.write(vm_cfg)
+    cfg.close()
+    # create the zone
+    create_error = shell_execute("zonecfg -z %s -f %s" % (options.name, fname))
+    if create_error:
+        # the error messages are rather nice; this allows us to use
+        # them, but should be improved
+        print(zone2vm(create_error))
+        return
+    # create the ZFS fs and install the zone
+    # again, the output MUST be improved; we cannot just use this
+    # stuff about zones
+    os.system("zoneadm -z %s install" % options.name)
+    # boot the zone
+    shell_execute("zoneadm -z %s boot" % options.name)
+    # print a usage message and login
+    time.sleep(1)
+    print("\nPress enter to connect to the VM's console. Use '[.' to close the connection.")
+    input()
+    os.system("zlogin -e[ -C %s" % options.name)
+
+def update(options):
+    errors = []
+    # autoboot property
+    autoboot = None
+    if options.autoboot is not None:
+        autoboot = True
+    if options.noautoboot is not None:
+        autoboot = False
+    if autoboot is not None:
+        result = update_vm(options.name, 'set autoboot="%s"' % str(autoboot).lower())
+        if result:
+            errors.append(result)
+    # boot args property
+    if options.bootargs is not None:
+        # bootargs need to be propoerly escaped
+        bootargs = shlex.split(options.bootargs)[0]
+        result = update_vm(options.name, 'set bootargs="%s"' % bootargs)
+        if result:
+            errors.append(result)
+    # description
+    if options.desc is not None:
+        new_desc = ";".join(gen_zone_description(options.desc, save=True))
+        result = update_vm(options.name, "remove attr name=comment; %s" % new_desc)
+        if result:
+            errors.append(result)
+    # memory limit
+    if options.mem is not None:
+        cap_mem = ";".join(gen_zone_cap_mem(options.mem, save=True))
+        result = update_vm(options.name, "remove capped-memory; %s" % cap_mem)
+        if result:
+            errors.append(result)
+    # network
+    if options.netif is not None and options.netaddr is not None:
+        net = ";".join(gen_zone_net(addr=options.netaddr, phys=options.netif, save=True))
+        result = update_vm(options.name, "remove net; %s" % net)
+        if result:
+            errors.append(result)        
+    # if ok maybe reboot, else print errors
+    if errors:
+        print(zone2vm("\n".join(errors)))
+    else:
+        if options.reboot:
+            reboot(options)
+
+# execute the string that actually updates a VM's configuration
+def update_vm(vm, cfg):
+    return shell_execute("zonecfg -z %s '%s'" %(vm, cfg))
+
+# parser_update.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
+#                            help="Network interface name")
+# parser_update.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
+#                            help="Network interface IP address")
+
+def destroy(options):
+    os.system("zoneadm -z %s halt" % options.name)
+    zone_del = shell_execute("zonecfg -z %s delete -F" % options.name)
+    if options.verbose and zone_del:
+        print(zone_del.strip())
+    # arguments of os.path cannot be absolute paths (except the first
+    # one)
+    zfs_del = shell_execute("zfs destroy -r %s" % os.path.join(options.rpool, 
+                                                               BASE_ZONE_PATH[1:], 
+                                                               options.name))
+    if options.verbose and zfs_del:
+        print(zfs_del.strip())
+    if options.verbose:
+        print("VM %s destroyed" % options.name)
+
+def list(options):
+    if options.verbose:
+        list_verbose()
+    else:
+        list_std(not options.no_header, options.running)
+
+def list_std(header, running):
+    ID = 0; NAME = 1; STATUS = 2
+    state_flag = "c"
+    if running:
+        state_flag = ""
+    zone_info = shell_execute("/usr/sbin/zoneadm list -p%s" % state_flag)
+    zones = [ z for z in zone_info.split("\n") if z != "" ]
+    if header:
+        print("{0:7} {1:20} {2:10}".format("ID", "NAME", "STATUS"))
+    for z in zones:
+        zone_data = z.split(":")
+        if zone_data[NAME] != "global":
+            print(" {0:7} {1:20} {2:10}".format(zone_data[ID], zone_data[NAME], zone_data[STATUS]))
+
+def list_verbose():
+    zone_info = shell_execute("/usr/bin/zonestat 1 1")
+    data_parts = [p for p in zone_info.split("\n") if p ]
+    # first two lines and the 'global' zone are useless info
+    useful_info = data_parts[2:]
+    for line in useful_info:
+        info_parts = [ p for p in line.split() if p != "" ]
+        if info_parts[0] != "global":
+            print(line)
+
+def show(options):
+    zone_info = shell_execute("/usr/sbin/zonecfg -z %s info" % options.name)
+    parts = zone_info.split("\n")
+    # we really need a more customized output...
+    if len(parts) > 1:
+        print("\n".join(parts[:2]))
+        print("\n".join(parts[3:5]))
+        print("\n".join(parts[11:]))
+    else:
+        print("No such VM")
+
+def login(options):
+    os.system("zlogin -e[ -C %s" % options.name)
+
+def boot(options):
+    error = shell_execute("zoneadm -z %s boot" % options.name)
+    if error:
+        print(zone2vm(error))
+
+def reboot(options):
+    verbose("Rebooting...", options.verbose)
+    cmd = "zlogin %s reboot" % options.name
+    reboot_error = shell_execute(cmd)
+    if reboot_error:
+        # we need better output...
+        print(zone2vm(reboot_error))
+
+def shutdown(options):
+    if options.force:
+        verbose("Forcing shutdown...", options.verbose)
+        cmd = "zoneadm -z %s shutdown -i5 -g0 -y" % options.name
+    else:
+        verbose("Clean shutdown...", options.verbose)
+        cmd = "zlogin %s halt" % options.name
+    shutdown_error = shell_execute(cmd)
+    if shutdown_error:
+        # we need better output...
+        print(zone2vm(shutdown_error))
+
+##! precisa de verificacao: a VM existe? condicoes de progresso? /tmp
+##! esta ok? tem que verificar que correu bem (success do attach,
+##! etc.)
+def backup(options):
+    if not os.path.exists(options.dest):
+        print("Directory '%s' does not exist" % options.dest)
+        return
+    # use /tmp to create the backup files (and final archive)
+    os.chdir("/tmp")
+    date_name = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
+    bkp_dir = "%s_%s" % (options.name, date_name)
+    os.mkdir(bkp_dir)
+    # VM has to be shutdown
+    verbose("Shutting down VM %s..." % options.name, options.verbose)
+    shutdown(options)
+    verbose("Saving configuration of VM %s..." % options.name, options.verbose)
+    # for some strange reason, the export option doesn't add quotes to
+    # the bootargs parameter
+    shell_execute("zonecfg -z %s export | sed -e 's/bootargs=\(.*\)/bootargs=\"\\1\"/' > %s.cfg" % (options.name, 
+                                                                                                    os.path.join(bkp_dir, options.name)))
+    shell_execute("zoneadm -z %s detach -n > %s.xml" % (options.name, os.path.join(bkp_dir, options.name)))
+    verbose("Detaching VM %s..." % options.name, options.verbose)
+    shell_execute("zoneadm -z %s detach" % options.name)
+    verbose("Exporting VM %s..." % options.name, options.verbose)
+    # zfs snapshot
+    vm_zfs = "%s/zones/%s@%s" % (options.rpool, options.name, BACKUP_SNAPSHOT_NAME)
+    os.system("zfs snapshot -r %s" % vm_zfs)
+    os.system("zfs send -R %s > %s.snapshot" % (vm_zfs, os.path.join(bkp_dir, options.name)))
+    os.system("zfs destroy -r %s" % vm_zfs)
+    # attach and boot VM (everything back online)
+    verbose("Attaching VM %s..." % options.name, options.verbose)
+    shell_execute("zoneadm -z %s attach" % options.name)
+    verbose("Booting VM %s..." % options.name, options.verbose)
+    boot(options)
+    # create backup archive on the specified destination
+    archive = os.path.join(options.dest, options.name + "_" + date_name)
+    verbose("Creating archive %s from %s..." % (archive, bkp_dir), options.verbose)
+    tar = shell_execute("tar cvzf %s.tgz %s" % (archive, bkp_dir))
+    verbose(tar, options.verbose)
+    # cleanup temporary mess
+    shell_execute("rm -fr %s" % bkp_dir)
+
+## ! precisa de verificacao: a VM já existe? (attach -n não faz um
+## caralho) erros a meio? tem que verificar que correu bem (success do
+## attach, etc.)
+def restore(options):
+    # create the zfs fs
+    # extract .tgz
+    # zfs recv -F rpool/zones/the_zone  < the_zone.backup.snapshot
+    # destroy the ZVE_BACKUP snapshot
+    # zfs set mountpoint=legacy rpool1/zones/the_zone/ROOT/zbe
+    # zfs set mountpoint=legacy rpool1/zones/the_zone/ROOT
+    # mount -F zfs rpool1/zones/the_zone/ROOT/zbe /zones/the_zone/root/
+    # zonecfg -z the_zone -f the_zone.cfg  !! cuidado com as aspas nos boot_args !!
+    # zoneadm -z the_zone attach
+    # zoneadm boot horde2
+    pass
+
+if __name__ == "__main__":
+    options = parser.parse_args()
+    # is this ok?
+    # needs more care anyway
+    options.rpool = shell_execute("/usr/sbin/zpool list -H | awk '{print $1}'")
+    # at this point the option in sys.argv[1] has to be valid; we may
+    # as weel keep it simple and use a coherent naming scheme
+    eval("%s(options)" % sys.argv[1])

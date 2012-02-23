@@ -1,0 +1,13 @@
+isto e um bocado porco; mas estamos com pressa
+
+a solucao decente e ter um repo da DVL com um pacote text-install para
+o ZVE
+
+para ja, abadalhocamos estes ficheiros, sobrepomos aos do sistema na
+hora certa, e fica como precisamos
+
+o path e:
+
+/usr/lib/python2.6/vendor-packages/osol_install/text_install
+
+
