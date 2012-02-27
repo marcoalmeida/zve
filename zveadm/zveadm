@@ -16,124 +16,125 @@ import argparse
 BASE_ZONE_PATH = "/zones"
 BACKUP_SNAPSHOT_NAME = "ZVE_BACKUP"
 
+def parse_args(cmd_line_args):
+    ##
+    ## options parser
+    ##
 
-##
-## options parser
-##
+    # create the top-level parser
+    parser = argparse.ArgumentParser(prog=cmd_line_args[0], description="Administer the Zeta Virtualization Environment")
+    subparsers = parser.add_subparsers(title="subcommands", description="valid subcommands", help="sub-command help")
 
-# create the top-level parser
-parser = argparse.ArgumentParser(prog=sys.argv[0], description="Administer the Zeta Virtualization Environment")
-subparsers = parser.add_subparsers(title="subcommands", description="valid subcommands", help="sub-command help")
+    # parser for the "create" command
+    parser_create = subparsers.add_parser("create", help="Create a new VM")
+    parser_create.add_argument("-n", "--name", dest="name", metavar="NAME",
+                               help="VM name", required=True)
+    parser_create.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
+                               help="Network interface name", required=True)
+    parser_create.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
+                               help="Network interface IP address", required=True)
+    parser_create.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
+                               default=False, help="Should be booted automatically at system boot")
+    parser_create.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
+                               help="VM description", default=None)
+    parser_create.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
+                               help="Boot arguments", default="")
+    parser_create.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
+                               help="Capped memory", default=None)
 
-# parser for the "create" command
-parser_create = subparsers.add_parser("create", help="Create a new VM")
-parser_create.add_argument("-n", "--name", dest="name", metavar="NAME",
-                           help="VM name", required=True)
-parser_create.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
-                           help="Network interface name", required=True)
-parser_create.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
-                           help="Network interface IP address", required=True)
-parser_create.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
-                           default=False, help="Should be booted automatically at system boot")
-parser_create.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
-                           help="VM description", default=None)
-parser_create.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
-                           help="Boot arguments", default="")
-parser_create.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
-                           help="Capped memory", default=None)
+    # parser for the "update" command
+    parser_update = subparsers.add_parser("update", help="Update an existing VM")
+    parser_update.add_argument("-n", "--name", dest="name", metavar="NAME",
+                               help="VM name", required=True)
+    parser_update.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
+                               default=None, help="Network interface name")
+    parser_update.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
+                               default=None, help="Network interface IP address")
+    parser_update.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
+                               default=None, help="Should not be booted automatically at system boot")
+    parser_update.add_argument("--no-autoboot", dest="noautoboot", action="store_true",
+                               default=None, help="Should be booted automatically at system boot")
+    parser_update.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
+                               default=None, help="VM description")
+    parser_update.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
+                               default=None, help="Boot arguments")
+    parser_update.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
+                               default=None, help="Capped memory")
+    parser_update.add_argument("-r", "--reboot", dest="reboot", action="store_true",
+                               default=False, help="Automatically reboot so that the changes take effect")
+    parser_update.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
 
-# parser for the "update" command
-parser_update = subparsers.add_parser("update", help="Update an existing VM")
-parser_update.add_argument("-n", "--name", dest="name", metavar="NAME",
-                           help="VM name", required=True)
-parser_update.add_argument("-i", "--interface", dest="netif", metavar="NETIF",
-                           default=None, help="Network interface name")
-parser_update.add_argument("-a", "--address", dest="netaddr", metavar="NETADDR",
-                           default=None, help="Network interface IP address")
-parser_update.add_argument("-b", "--autoboot", dest="autoboot", action="store_true",
-                           default=None, help="Should not be booted automatically at system boot")
-parser_update.add_argument("--no-autoboot", dest="noautoboot", action="store_true",
-                           default=None, help="Should be booted automatically at system boot")
-parser_update.add_argument("-D", "--description", dest="desc", metavar="DESCRIPTION",
-                           default=None, help="VM description")
-parser_update.add_argument("-B", "--boot-args", dest="bootargs", metavar="BOOTARGS",
-                           default=None, help="Boot arguments")
-parser_update.add_argument("-m", "--capped-memory", dest="mem", metavar="CAP-MEM",
-                           default=None, help="Capped memory")
-parser_update.add_argument("-r", "--reboot", dest="reboot", action="store_true",
-                           default=False, help="Automatically reboot so that the changes take effect")
-parser_update.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+    # parser for the "destroy" command
+    parser_destroy = subparsers.add_parser("destroy", help="Destroy a VM")
+    parser_destroy.add_argument("-n", "--name", dest="name", metavar="NAME",
+                                help="VM name", required=True)
+    parser_destroy.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
 
-# parser for the "destroy" command
-parser_destroy = subparsers.add_parser("destroy", help="Destroy a VM")
-parser_destroy.add_argument("-n", "--name", dest="name", metavar="NAME",
-                           help="VM name", required=True)
-parser_destroy.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+    # parser for the "list" command
+    parser_list = subparsers.add_parser("list", help="List the existing VMs")
+    parser_list.add_argument("-r", "--running", dest="running", action="store_true",
+                             default=False, help="Show only running VMs")
+    parser_list.add_argument("-H", "--no-header", dest="no_header", action="store_true",
+                             default=False, help="Do not print headers")
+    parser_list.add_argument("-v", "--verbose", action="store_true", default=False,
+                             help="Verbose output")
 
-# parser for the "list" command
-parser_list = subparsers.add_parser("list", help="List the existing VMs")
-parser_list.add_argument("-r", "--running", dest="running", action="store_true", 
-                         default=False, help="Show only running VMs")
-parser_list.add_argument("-H", "--no-header", dest="no_header", action="store_true", 
-                         default=False, help="Do not print headers")
-parser_list.add_argument("-v", "--verbose", action="store_true", default=False, 
-                         help="Verbose output")
-
-# parser for the "show" command
-parser_show = subparsers.add_parser("show", help="Display information about a VM confguration")
-parser_show.add_argument("-n", "--name", dest="name", metavar="NAME",
-                         help="VM name", required=True)
-
-# parser for the "login" command
-parser_login = subparsers.add_parser("login", help="Connect to a VM console")
-parser_login.add_argument("-n", "--name", dest="name", metavar="NAME",
-                          help="VM name", required=True)
-
-# parser for the "boot" command
-parser_boot = subparsers.add_parser("boot", help="Boot a VM")
-parser_boot.add_argument("-n", "--name", dest="name", metavar="NAME",
+    # parser for the "show" command
+    parser_show = subparsers.add_parser("show", help="Display information about a VM confguration")
+    parser_show.add_argument("-n", "--name", dest="name", metavar="NAME",
                              help="VM name", required=True)
 
-# parser for the "reboot" command
-parser_reboot = subparsers.add_parser("reboot", help="Cleanly reboot a VM")
-parser_reboot.add_argument("-n", "--name", dest="name", metavar="NAME",
+    # parser for the "login" command
+    parser_login = subparsers.add_parser("login", help="Connect to a VM console")
+    parser_login.add_argument("-n", "--name", dest="name", metavar="NAME",
+                              help="VM name", required=True)
+
+    # parser for the "boot" command
+    parser_boot = subparsers.add_parser("boot", help="Boot a VM")
+    parser_boot.add_argument("-n", "--name", dest="name", metavar="NAME",
                              help="VM name", required=True)
-parser_reboot.add_argument("-v", "--verbose", action="store_true", default=False, 
-                           help="Verbose output")
 
-# parser for the "shutdown" command
-parser_shutdown = subparsers.add_parser("shutdown", help="Cleanly shutdown a VM")
-parser_shutdown.add_argument("-n", "--name", dest="name", metavar="NAME",
-                             help="VM name", required=True)
-parser_shutdown.add_argument("-f", "--force", action="store_true", default=False, 
-                             help="Stop the VM bypassing the shutdown scripts")
-parser_shutdown.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
+    # parser for the "reboot" command
+    parser_reboot = subparsers.add_parser("reboot", help="Cleanly reboot a VM")
+    parser_reboot.add_argument("-n", "--name", dest="name", metavar="NAME",
+                               help="VM name", required=True)
+    parser_reboot.add_argument("-v", "--verbose", action="store_true", default=False,
+                               help="Verbose output")
 
-# parser for the "backup" command
-parser_backup = subparsers.add_parser("backup", help="Backup a VM")
-parser_backup.add_argument("-n", "--name", dest="name", metavar="NAME",
-                           help="VM name", required=True)
-parser_backup.add_argument("-d", "--destination", dest="dest", metavar="DESTINATION",
-                           help="Full path to the backup directory", required=True)
-parser_backup.add_argument("-f", "--force", action="store_true", default=False, 
-                             help="Force backup (e.g., bypassing the shutdown scripts)")
-parser_backup.add_argument("-v", "--verbose", action="store_true", default=False, 
-                           help="Verbose output")
+    # parser for the "shutdown" command
+    parser_shutdown = subparsers.add_parser("shutdown", help="Cleanly shutdown a VM")
+    parser_shutdown.add_argument("-n", "--name", dest="name", metavar="NAME",
+                                 help="VM name", required=True)
+    parser_shutdown.add_argument("-f", "--force", action="store_true", default=False,
+                                 help="Stop the VM bypassing the shutdown scripts")
+    parser_shutdown.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")
 
-# parser for the "restore" command
-parser_restore = subparsers.add_parser("restore", help="Restore a VM")
-parser_restore.add_argument("-n", "--name", dest="name", metavar="NAME",
-                           help="VM name", required=True)
-parser_restore.add_argument("-B", "--backup", dest="backup", metavar="BACKUP",
-                           help="Full path to the backup file", required=True)
-parser_restore.add_argument("-b", "--boot", action="store_true", default=False, 
-                           help="Boot the zone after restoring the backup")
-parser_restore.add_argument("-v", "--verbose", action="store_true", default=False, 
-                           help="Verbose output")
+    # parser for the "backup" command
+    parser_backup = subparsers.add_parser("backup", help="Backup a VM")
+    parser_backup.add_argument("-n", "--name", dest="name", metavar="NAME",
+                               help="VM name", required=True)
+    parser_backup.add_argument("-d", "--destination", dest="dest", metavar="DESTINATION",
+                               help="Full path to the backup directory", required=True)
+    parser_backup.add_argument("-f", "--force", action="store_true", default=False,
+                               help="Force backup (e.g., bypassing the shutdown scripts)")
+    parser_backup.add_argument("-v", "--verbose", action="store_true", default=False,
+                               help="Verbose output")
 
-# parser for the "clone" command
-parser_clone = subparsers.add_parser("clone", help="Clone a VM")
+    # parser for the "restore" command
+    parser_restore = subparsers.add_parser("restore", help="Restore a VM")
+    parser_restore.add_argument("-n", "--name", dest="name", metavar="NAME",
+                                help="VM name", required=True)
+    parser_restore.add_argument("-B", "--backup", dest="backup", metavar="BACKUP",
+                                help="Full path to the backup file", required=True)
+    parser_restore.add_argument("-b", "--boot", action="store_true", default=False,
+                                help="Boot the zone after restoring the backup")
+    parser_restore.add_argument("-v", "--verbose", action="store_true", default=False,
+                                help="Verbose output")
 
+    # parser for the "clone" command
+    parser_clone = subparsers.add_parser("clone", help="Clone a VM")
+
+    return parser.parse_args()
 
 ##
 ## assorted, useful stuff
@@ -218,7 +219,7 @@ def create(options):
         end
         """ % options.desc
     vm_cfg = begin_cfg + base_cfg % (os.path.join(BASE_ZONE_PATH, options.name),
-                                     str(options.autoboot).lower(), options.bootargs, 
+                                     str(options.autoboot).lower(), options.bootargs,
                                      options.netaddr, options.netif) + vm_options + end_cfg
     # create the cfg file
     fname = options.name + ".cfg"
@@ -280,7 +281,7 @@ def update(options):
         net = ";".join(gen_zone_net(addr=options.netaddr, phys=options.netif, save=True))
         result = update_vm(options.name, "remove net; %s" % net)
         if result:
-            errors.append(result)        
+            errors.append(result)
     # if ok maybe reboot, else print errors
     if errors:
         print(zone2vm("\n".join(errors)))
@@ -304,8 +305,8 @@ def destroy(options):
         print(zone_del.strip())
     # arguments of os.path cannot be absolute paths (except the first
     # one)
-    zfs_del = shell_execute("zfs destroy -r %s" % os.path.join(options.rpool, 
-                                                               BASE_ZONE_PATH[1:], 
+    zfs_del = shell_execute("zfs destroy -r %s" % os.path.join(options.rpool,
+                                                               BASE_ZONE_PATH[1:],
                                                                options.name))
     if options.verbose and zfs_del:
         print(zfs_del.strip())
@@ -351,7 +352,7 @@ def show(options):
         print("\n".join(parts[3:5]))
         print("\n".join(parts[11:]))
     else:
-        print("No such VM")
+        print("VM %s not found." % options.name)
 
 def login(options):
     os.system("zlogin -e[ -C %s" % options.name)
@@ -363,8 +364,7 @@ def boot(options):
 
 def reboot(options):
     verbose("Rebooting...", options.verbose)
-    cmd = "zlogin %s reboot" % options.name
-    reboot_error = shell_execute(cmd)
+    reboot_error = shell_execute("zlogin %s reboot" % options.name)
     if reboot_error:
         # we need better output...
         print(zone2vm(reboot_error))
@@ -399,7 +399,7 @@ def backup(options):
     verbose("Saving configuration of VM %s..." % options.name, options.verbose)
     # for some strange reason, the export option doesn't add quotes to
     # the bootargs parameter
-    shell_execute("zonecfg -z %s export | sed -e 's/bootargs=\(.*\)/bootargs=\"\\1\"/' > %s.cfg" % (options.name, 
+    shell_execute("zonecfg -z %s export | sed -e 's/bootargs=\(.*\)/bootargs=\"\\1\"/' > %s.cfg" % (options.name,
                                                                                                     os.path.join(bkp_dir, options.name)))
     shell_execute("zoneadm -z %s detach -n > %s.xml" % (options.name, os.path.join(bkp_dir, options.name)))
     verbose("Detaching VM %s..." % options.name, options.verbose)
@@ -440,7 +440,7 @@ def restore(options):
     pass
 
 if __name__ == "__main__":
-    options = parser.parse_args()
+    options = parse_args(sys.argv)
     # is this ok?
     # needs more care anyway
     options.rpool = shell_execute("/usr/sbin/zpool list -H | awk '{print $1}'")
