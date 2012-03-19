@@ -116,6 +116,8 @@ def parse_args(cmd_line_args):
                                help="VM name", required=True)
     parser_backup.add_argument("-d", "--destination", dest="dest", metavar="DESTINATION",
                                help="Full path to the backup directory", required=True)
+    parser_backup.add_argument("-t", "--timestamp", action="store_true", default=False,
+                               help="Append timestamp to the file name")
     parser_backup.add_argument("-f", "--force", action="store_true", default=False,
                                help="Force backup (e.g., bypassing the shutdown scripts)")
     parser_backup.add_argument("-v", "--verbose", action="store_true", default=False,
@@ -396,19 +398,22 @@ def backup(options):
     date_name = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
     bkp_dir = "%s_%s" % (options.name, date_name)
     os.mkdir(bkp_dir)
-    # VM has to be shutdown
+    # VM has to be halted; we start by trying a clean shutdown
     verbose("Shutting down VM %s..." % options.name, options.verbose)
     shutdown(options)
+    shell_execute("zoneadm -z %s halt" % options.name)
+    # export cfg
     verbose("Saving configuration of VM %s..." % options.name, options.verbose)
     # for some strange reason, the export option doesn't add quotes to
     # the bootargs parameter
     shell_execute("zonecfg -z %s export | sed -e 's/bootargs=\(.*\)/bootargs=\"\\1\"/' > %s.cfg" % (options.name,
                                                                                                     os.path.join(bkp_dir, options.name)))
     shell_execute("zoneadm -z %s detach -n > %s.xml" % (options.name, os.path.join(bkp_dir, options.name)))
+    # detach
     verbose("Detaching VM %s..." % options.name, options.verbose)
     shell_execute("zoneadm -z %s detach" % options.name)
-    verbose("Exporting VM %s..." % options.name, options.verbose)
     # zfs snapshot
+    verbose("Exporting VM %s..." % options.name, options.verbose)
     vm_zfs = "%s/zones/%s@%s" % (options.rpool, options.name, BACKUP_SNAPSHOT_NAME)
     os.system("zfs snapshot -r %s" % vm_zfs)
     os.system("zfs send -R %s > %s.snapshot" % (vm_zfs, os.path.join(bkp_dir, options.name)))
@@ -419,9 +424,12 @@ def backup(options):
     verbose("Booting VM %s..." % options.name, options.verbose)
     boot(options)
     # create backup archive on the specified destination
-    archive = os.path.join(options.dest, options.name + "_" + date_name)
+    archive = os.path.join(options.dest, options.name)
+    if options.timestamp:
+        archive = archive + "_" + date_name
+    archive += ".tgz"
     verbose("Creating archive %s from %s..." % (archive, bkp_dir), options.verbose)
-    tar = shell_execute("tar cvzf %s.tgz %s" % (archive, bkp_dir))
+    tar = shell_execute("tar cvzf %s %s" % (archive, bkp_dir))
     verbose(tar, options.verbose)
     # cleanup temporary mess
     shell_execute("rm -fr %s" % bkp_dir)
