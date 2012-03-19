@@ -2,7 +2,7 @@
 
 import sys
 import os
-from subprocess import Popen, PIPE, STDOUT
+import subprocess
 import shlex
 import datetime
 import re
@@ -141,10 +141,12 @@ def parse_args(cmd_line_args):
 ## assorted, useful stuff
 ##
 
-# equivalent to os.system(cmd), but returns the output
-def shell_execute(cmd):
-    p = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
-    return p.communicate()[0].decode("utf-8").strip()
+# equivalent to os.system(cmd), but returns the output; raises an
+# exception when the commands doesn't exit with 0
+def shell_execute(cmd, die=True):
+    if die == False:
+        cmd += "; exit 0"
+    return subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True).decode("ascii").strip()
 
 # temporary thing to have a reasonable output...
 def zone2vm(s0):
@@ -441,7 +443,7 @@ def restore(options):
     verbose("Receiving '%s' into '%s'..." % (zfs_path, options.name), options.verbose)
     shell_execute("zfs recv -F %s  < %s.snapshot" % (zfs_path, options.name))
     # destroy the ZVE_BACKUP snapshot
-    shell_execute("zfs destroy %s@%s" % (zfs_path, BACKUP_SNAPSHOT_NAME))
+    shell_execute("zfs destroy %s@%s" % (zfs_path, BACKUP_SNAPSHOT_NAME), die=False)
     # fix some zfs properties (otherwise the VM won't attach)
     verbose("Updating mountpoints...", options.verbose)
     shell_execute("zfs set mountpoint=legacy %s/ROOT/zbe" % zfs_path)
