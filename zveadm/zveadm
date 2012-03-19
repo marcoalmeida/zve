@@ -13,7 +13,8 @@ import argparse
 ##
 ## settings
 ##
-BASE_ZONE_PATH = "/zones"
+ZONES_DATASET = "zones"
+BASE_ZONE_PATH = "/%s" % ZONES_DATASET
 BACKUP_SNAPSHOT_NAME = "ZVE_BACKUP"
 
 def parse_args(cmd_line_args):
@@ -423,21 +424,43 @@ def backup(options):
     # cleanup temporary mess
     shell_execute("rm -fr %s" % bkp_dir)
 
-## ! precisa de verificacao: a VM já existe? (attach -n não faz um
-## caralho) erros a meio? tem que verificar que correu bem (success do
-## attach, etc.)
+## as usual, need aditional checks, error handling, lots of testing in
+## dumb environments, etc.
 def restore(options):
-    # create the zfs fs
+    bkpdir = options.backup[options.backup.rindex("/")+1:-4]
+    zfs_path = os.path.join(options.rpool, ZONES_DATASET, options.name)
     # extract .tgz
-    # zfs recv -F rpool/zones/the_zone  < the_zone.backup.snapshot
+    verbose("Extracting %s..." % options.backup, options.verbose)
+    os.chdir("/tmp")
+    shell_execute("tar xvzf %s" % options.backup)
+    os.chdir(bkpdir)
+    # create the zfs fs
+    verbose("Creating dataset %s..." % zfs_path, options.verbose)
+    shell_execute("zfs create %s" % zfs_path)
+    # restore the backup from the snapshot
+    verbose("Receiving '%s' into '%s'..." % (zfs_path, options.name), options.verbose)
+    shell_execute("zfs recv -F %s  < %s.snapshot" % (zfs_path, options.name))
     # destroy the ZVE_BACKUP snapshot
-    # zfs set mountpoint=legacy rpool1/zones/the_zone/ROOT/zbe
-    # zfs set mountpoint=legacy rpool1/zones/the_zone/ROOT
-    # mount -F zfs rpool1/zones/the_zone/ROOT/zbe /zones/the_zone/root/
-    # zonecfg -z the_zone -f the_zone.cfg  !! cuidado com as aspas nos boot_args !!
-    # zoneadm -z the_zone attach
-    # zoneadm boot horde2
-    pass
+    shell_execute("zfs destroy %s@%s" % (zfs_path, BACKUP_SNAPSHOT_NAME))
+    # fix some zfs properties (otherwise the VM won't attach)
+    verbose("Updating mountpoints...", options.verbose)
+    shell_execute("zfs set mountpoint=legacy %s/ROOT/zbe" % zfs_path)
+    shell_execute("zfs set mountpoint=legacy %s/ROOT" % zfs_path)
+    shell_execute("mount -F zfs %s/ROOT/zbe %s/root/" % (zfs_path, os.path.join(BASE_ZONE_PATH, options.name)))
+    # load the cfg
+    verbose("Restoring VM configuration...", options.verbose)
+    shell_execute("zonecfg -z %s -f %s.cfg" % (options.name, options.name)) # !! cuidado com as aspas nos boot_args !!
+    # attach the zone
+    verbose("Attaching...", options.verbose)
+    shell_execute("zoneadm -z %s attach -u" % options.name)
+    # remove the extrated backup dir
+    verbose("Removing temporary files...", options.verbose)
+    os.chdir("..")
+    shell_execute("rm -fr %s" % bkpdir)
+    if options.boot:
+        verbose("Booting...", options.verbose)
+        shell_execute("zoneadm boot %s" % options.name)
+
 
 if __name__ == "__main__":
     options = parse_args(sys.argv)
