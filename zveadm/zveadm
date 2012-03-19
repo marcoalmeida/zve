@@ -150,6 +150,14 @@ def shell_execute(cmd, die=True):
         cmd += "; exit 0"
     return subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True).decode("ascii").strip()
 
+# end program execution if zone z does not exist
+def require_zone(z):
+    try:
+        shell_execute("zoneadm -z %s verify" % z)
+    except:
+        print("Zone %s does not exist" % z)
+        sys.exit(1)
+
 # temporary thing to have a reasonable output...
 def zone2vm(s0):
     s1 = re.sub("zlogin: ", "", s0, 0, re.M|re.I)
@@ -390,6 +398,7 @@ def shutdown(options):
 ##! esta ok? tem que verificar que correu bem (success do attach,
 ##! etc.)
 def backup(options):
+    require_zone(options.name)
     if not os.path.exists(options.dest):
         print("Directory '%s' does not exist" % options.dest)
         return
